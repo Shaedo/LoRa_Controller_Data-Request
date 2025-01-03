@@ -1,18 +1,22 @@
-#include <Arduino.h>
+/******* SUMMARY *****
+  *PIN-OUT*
+    https://resource.heltec.cn/download/Wireless_Stick_Lite_V3/HTIT-WSL_V3.png
+ */
+/******* INCLUDES ***********/
+  #include <Arduino.h>
 
-// put function declarations here:
-int myFunction(int, int);
+/******* FUNCTION PROTOTYPES ***********/
 
-void setup() {
-  // put your setup code here, to run once:
-  int result = myFunction(2, 3);
-}
+/******* GLOBAL VARS ***********/
+//
+/******* INSTANTIATED CLASS OBJECTS ***********/
 
-void loop() {
-  // put your main code here, to run repeatedly:
-}
+/******* INIT - SETUP ***********/
 
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
-}
+/******* LOOP ***********/
+	void loop() {
+    
+	  // put your main code here, to run repeatedly:
+	}
+
+/*END*/
