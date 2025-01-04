@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "LoRa_Data_Request",
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"new": "cpp"
+		}
+	}
+}
