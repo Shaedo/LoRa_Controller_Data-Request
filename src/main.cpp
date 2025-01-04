@@ -1,6 +1,9 @@
+/* LORA CONTROLLER - DATA REQUEST */
+
 /******* SUMMARY *****
   *PIN-OUT*
     https://resource.heltec.cn/download/Wireless_Stick_Lite_V3/HTIT-WSL_V3.png
+    Inbuilt LoRa device, no external connections
  */
 
 /******* INCLUDES ***********/
@@ -12,6 +15,11 @@
   void setup();
   void initLoRa();
   void loop();
+  void loRaTX();
+  void requestPeripheralReport(byte peripheralID);
+  void listenLoRa();
+  void parseRx();
+  void updatePeripheralReport(); 
 
 /******* GLOBAL VARS ***********/
   #define REPORTING_MODE 2 //0 = prod mode, 1 = include comments, 2 = dev (resests all, eg wipes EEPROM records etc)
@@ -20,22 +28,36 @@
   #define LoRa_BUFFER 12 // bytes tx/rx each LoRa transmission
   uint8_t loraData[LoRa_BUFFER]; // array of all tx/rx LoRa data
 
+  // Flag for current LoRa cycle - loops around from MIN_CURRENT_CYCLE to 255 
+  // Prevents relays from doubling up on requests etc. This step is not neccesarry for simple systems (no relays, no cross transmissions), but has low overhead
+  uint8_t currentLoRaCycle_g = 99;
+
+  //Controllers current task....
+  # define STATUS_INIT 0
+  # define STATUS_IDLE 1
+  # define STATUS_PERIPHERAL_REPORT 11
+  # define STATUS_LISTENING_PERIPHERAL 12
+  # define STATUS_REPORT_TIMED_OUT 13
+  uint8_t status_g = STATUS_INIT;
+
 /******* INSTANTIATED CLASS OBJECTS ***********/
-  SX1262 radio = new Module(LoRa_NSS, LoRa_DIO1, LoRa_NRST, LoRa_BUSY);
+  SX1262 radio = new Module(LoRa_NSS, LoRa_DIO1, LoRa_NRST, LoRa_BUSY); // see lora_config.h
 
 /******* INIT - SETUP ***********/
   void setup(){
     #if REPORTING_MODE > 0
         Serial.begin(SERIAL_BAUD_RATE);
+        Serial.println("Initializing ... ");
+        delay(500);
     #endif 
-
 
     initLoRa();
     delay(500);
 
     #if REPORTING_MODE > 0
       Serial.println("Setup Complete.");
-    #endif 
+    #endif
+    status_g = STATUS_IDLE;
   }
   void initLoRa(){
     #if REPORTING_MODE > 0
@@ -61,12 +83,38 @@
       while (true);
     }
   }
+ 
 /******* LOOP ***********/
     void loop() {
 
-    }
+      Serial.print("status_g.... ");
+      Serial.println(status_g);
+      delay(1000);
 
+       switch (status_g) {
+        case STATUS_LISTENING_PERIPHERAL: {
+          listenLoRa();
+          break;
+        }
+        case STATUS_IDLE: {
+          status_g = STATUS_PERIPHERAL_REPORT;
+          break;
+        }
+        case STATUS_PERIPHERAL_REPORT: {      
+          requestPeripheralReport(255);
+          break;
+        }
+      } 
+    }
   /**LoRa TX - CONTROLLER → PERIPHERAL **/
+     void requestPeripheralReport(byte peripheralID) {
+      //cycle[0] | type[1] | target ID[2]
+      loraData[0] = currentLoRaCycle_g;
+      loraData[1] = REQUESTTYPE_REPORT;
+      loraData[2] = peripheralID;
+
+      loRaTX();
+    }
     void loRaTX(){
       //attempt to prevent multiple units simulataneously transmitting 
       while(radio.getRSSI(false) > RSSI_INIT_TX_THRESHOLD){
@@ -81,7 +129,7 @@
 
       #if REPORTING_MODE > 0
         if (SX1262state == RADIOLIB_ERR_NONE) {// the packet was successfully transmitted
-         // Serial.println("TX success. Datarate: "+ String(radio.getDataRate()) + "bps");
+          Serial.println("TX success. Datarate: "+ String(radio.getDataRate()) + "bps");
         } else if (SX1262state == RADIOLIB_ERR_PACKET_TOO_LONG) {// the supplied packet was longer than 256 bytes
           Serial.println(F("too long!"));
         } else if (SX1262state == RADIOLIB_ERR_TX_TIMEOUT) {// timeout occured while transmitting packet
@@ -89,11 +137,13 @@
         } else {// some other error occurred
           Serial.println("TX Fail code: "+String(SX1262state));
         }
-      #endif 
-    }
+      #endif
 
+      status_g = STATUS_LISTENING_PERIPHERAL;
+    }
+ 
   /** LoRa RX - PERIPHERAL → CONTROLLER **/
-    void listenLoRa() {
+     void listenLoRa() {
       int SX1262state = radio.receive(loraData, LoRa_BUFFER);
       if (SX1262state == RADIOLIB_ERR_NONE) {// packet was successfully received
         #if REPORTING_MODE > 0 
@@ -113,8 +163,8 @@
             Serial.println(SX1262state);
         }
       #endif
-    }
-    void parseRx(){
+    } 
+     void parseRx(){
       uint8_t requestType = (int)loraData[1];
       uint8_t source = (int)loraData[2];
 
@@ -136,8 +186,7 @@
           #endif
           break;
       }
-    }
-
+    } 
     void updatePeripheralReport(){
       //cycle[0] | type[1] | id[2] | rssi[3], battery[4], sensor-data [5...]
       
@@ -156,5 +205,5 @@
         Serial.println(report);
       #endif
     }
-    
+ 
 /*END*/
