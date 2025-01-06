@@ -4,7 +4,7 @@
   *PIN-OUT*
     https://resource.heltec.cn/download/Wireless_Stick_Lite_V3/HTIT-WSL_V3.png
     Inbuilt LoRa device, no external connections
- */
+*/
 
 /******* INCLUDES ***********/
   #include <Arduino.h>
@@ -33,12 +33,14 @@
   uint8_t currentLoRaCycle_g = 99;
 
   //Controllers current task....
-  # define STATUS_INIT 0
-  # define STATUS_IDLE 1
-  # define STATUS_PERIPHERAL_REPORT 11
-  # define STATUS_LISTENING_PERIPHERAL 12
-  # define STATUS_REPORT_TIMED_OUT 13
-  uint8_t status_g = STATUS_INIT;
+  enum Status {
+      INIT,
+      IDLE,
+      PERIPHERAL_REPORT,
+      LISTENING_PERIPHERAL,
+      REPORT_TIMED_OUT
+  };
+  Status status = INIT;
 
 /******* INSTANTIATED CLASS OBJECTS ***********/
   SX1262 radio = new Module(LoRa_NSS, LoRa_DIO1, LoRa_NRST, LoRa_BUSY); // see lora_config.h
@@ -57,7 +59,7 @@
     #if REPORTING_MODE > 0
       Serial.println("Setup Complete.");
     #endif
-    status_g = STATUS_IDLE;
+    status = IDLE;
   }
   void initLoRa(){
     #if REPORTING_MODE > 0
@@ -86,29 +88,31 @@
  
 /******* LOOP ***********/
     void loop() {
+       switch (status) {
+        case LISTENING_PERIPHERAL: {
+//Serial.println("status.... LISTENING_PERIPHERAL");
 
-      Serial.print("status_g.... ");
-      Serial.println(status_g);
-      delay(1000);
-
-       switch (status_g) {
-        case STATUS_LISTENING_PERIPHERAL: {
           listenLoRa();
+          // placed at top of switch to maximise rx expediency
           break;
         }
-        case STATUS_IDLE: {
-          status_g = STATUS_PERIPHERAL_REPORT;
+        case IDLE: {
+Serial.println("status.... IDLE");
+          status = PERIPHERAL_REPORT;
           break;
         }
-        case STATUS_PERIPHERAL_REPORT: {      
+        case PERIPHERAL_REPORT: {
+Serial.println("status.... PERIPHERAL_REPORT");
+          //XXX magic number as stripped down code doesn't account for multiple peripherals   
           requestPeripheralReport(255);
           break;
         }
-      } 
+      }  
     }
   /**LoRa TX - CONTROLLER → PERIPHERAL **/
-     void requestPeripheralReport(byte peripheralID) {
+    void requestPeripheralReport(byte peripheralID) {
       //cycle[0] | type[1] | target ID[2]
+      currentLoRaCycle_g ++;
       loraData[0] = currentLoRaCycle_g;
       loraData[1] = REQUESTTYPE_REPORT;
       loraData[2] = peripheralID;
@@ -138,12 +142,11 @@
           Serial.println("TX Fail code: "+String(SX1262state));
         }
       #endif
-
-      status_g = STATUS_LISTENING_PERIPHERAL;
+      status = LISTENING_PERIPHERAL;
     }
  
   /** LoRa RX - PERIPHERAL → CONTROLLER **/
-     void listenLoRa() {
+    void listenLoRa() {
       int SX1262state = radio.receive(loraData, LoRa_BUFFER);
       if (SX1262state == RADIOLIB_ERR_NONE) {// packet was successfully received
         #if REPORTING_MODE > 0 
@@ -164,27 +167,32 @@
         }
       #endif
     } 
-     void parseRx(){
-      uint8_t requestType = (int)loraData[1];
-      uint8_t source = (int)loraData[2];
+    void parseRx(){
 
-      #if REPORTING_MODE > 0
-        Serial.println("LoRaData: re "+String(requestType)+ " from:"+ String(source));
-        Serial.println("requestType "+ requestType);
-        Serial.println("Recieved: "+String(loraData[0])+","+String(loraData[1])+","+String(loraData[2])+","+String(loraData[3])+","+String(loraData[4])+","+String(loraData[5])+","+String(loraData[6])+","+String(loraData[7])+","+String(loraData[8]));
-      #endif
-      
-      switch (requestType) {
-        case RETURNTYPE_REPORT:{
-          //cycle[0] | type[1] | id[2] | data: rssi[3], battery[4], sensor-data [5...]
-          updatePeripheralReport();
-          break;
+      if(currentLoRaCycle_g != (int)loraData[0]){
+        currentLoRaCycle_g = (int)loraData[0];
+        
+        uint8_t requestType = (int)loraData[1];
+        uint8_t source = (int)loraData[2];
+
+        #if REPORTING_MODE > 0
+          Serial.println("LoRaData: re "+String(requestType)+ " from:"+ String(source));
+          Serial.println("requestType "+ requestType);
+          Serial.println("Recieved: "+String(loraData[0])+","+String(loraData[1])+","+String(loraData[2])+","+String(loraData[3])+","+String(loraData[4])+","+String(loraData[5])+","+String(loraData[6])+","+String(loraData[7])+","+String(loraData[8]));
+        #endif
+        
+        switch (requestType) {
+          case RETURNTYPE_REPORT:{
+            //cycle[0] | type[1] | id[2] | data: rssi[3], battery[4], sensor-data [5...]
+            updatePeripheralReport();
+            break;
+          }
+          default:
+            #if REPORTING_MODE > 0
+              Serial.println("Rx LoRa ReturnType not found");
+            #endif
+            break;
         }
-        default:
-          #if REPORTING_MODE > 0
-            Serial.println("Rx LoRa ReturnType not found");
-          #endif
-          break;
       }
     } 
     void updatePeripheralReport(){
@@ -193,17 +201,26 @@
       uint8_t rssi = -(int)radio.getRSSI(); // having negative numbers for RSSI is annoying; removing the sign reduces storage size and makes more readable
       uint8_t peripheralID = (int)loraData[2];
 
-      uint8_t reportLength = (int)loraData[5];
+      uint8_t reportLength = (int)loraData[6];
       String report ="";
-      for(uint8_t i = 5; i < reportLength +5; i++){
-        char b = loraData[i]; 
+      for(uint8_t i = 6; i < reportLength +5; i++){
+        char b = loraData[i];
+Serial.print("char ");
+Serial.print(i);
+Serial.print(": ");
+Serial.println(b);
+
         report += b;
       }
 
       #if REPORTING_MODE > 0
-        Serial.println("Report recieved:");
+        Serial.println("Report received:");
         Serial.println(report);
       #endif
+
+delay(3000);
+status = PERIPHERAL_REPORT;
+
     }
  
 /*END*/
