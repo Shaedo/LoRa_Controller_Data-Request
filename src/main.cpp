@@ -175,11 +175,11 @@ Serial.println("status.... PERIPHERAL_REPORT");
         uint8_t requestType = (int)loraData[1];
         uint8_t source = (int)loraData[2];
 
-        #if REPORTING_MODE > 0
+/*         #if REPORTING_MODE > 0
           Serial.println("LoRaData: re "+String(requestType)+ " from:"+ String(source));
-          Serial.println("requestType "+ requestType);
-          Serial.println("Recieved: "+String(loraData[0])+","+String(loraData[1])+","+String(loraData[2])+","+String(loraData[3])+","+String(loraData[4])+","+String(loraData[5])+","+String(loraData[6])+","+String(loraData[7])+","+String(loraData[8]));
-        #endif
+          Serial.print("requestType ");
+          Serial.println(requestType);
+        #endif */
         
         switch (requestType) {
           case RETURNTYPE_REPORT:{
@@ -189,7 +189,7 @@ Serial.println("status.... PERIPHERAL_REPORT");
           }
           default:
             #if REPORTING_MODE > 0
-              Serial.println("Rx LoRa ReturnType not found");
+              Serial.println("Rx LoRa requestType not found");
             #endif
             break;
         }
@@ -198,12 +198,36 @@ Serial.println("status.... PERIPHERAL_REPORT");
     void updatePeripheralReport(){
       //cycle[0] | type[1] | id[2] | rssi[3], battery[4], sensor-data [5...]
       
-      uint8_t rssi = -(int)radio.getRSSI(); // having negative numbers for RSSI is annoying; removing the sign reduces storage size and makes more readable
+      uint8_t controllerRssi = -(int)radio.getRSSI(); // having negative numbers for RSSI is annoying; removing the sign reduces storage size and makes more readable
+Serial.print("incomming rssi: ");
+Serial.println(controllerRssi);
+
       uint8_t peripheralID = (int)loraData[2];
+Serial.print("peripheralID: ");
+Serial.println(peripheralID);
+
+      uint8_t peripheralRssi = (int)loraData[3];
+Serial.print("Reported rssi: ");
+Serial.println(peripheralRssi);
+
+      uint16_t rawVoltageReading  = ((uint16_t)loraData[5] << 8) | (uint16_t)loraData[4];
+Serial.print("rawVoltageReading: ");
+Serial.println(rawVoltageReading);
+
+float convertedVoltage = rawVoltageReading * 5.11 *(3.3/1024);
+Serial.print("convertedVoltage: ");
+Serial.println(convertedVoltage);
 
       uint8_t reportLength = (int)loraData[6];
-      String report ="";
-      for(uint8_t i = 6; i < reportLength +5; i++){
+Serial.print("reportLength: ");
+Serial.println(reportLength);
+
+
+       String report ="";
+
+//      const reportLimit uint8_t = LoRa_BUFFER - 7; 
+
+      for(uint8_t i = 7; i < reportLength +7; i++){
         char b = loraData[i];
 Serial.print("char ");
 Serial.print(i);
